@@ -1,9 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from pathlib import Path
+
+project_root = Path(SPECPATH).resolve().parent
+main_script = project_root / 'main.py'
+
 
 a = Analysis(
-    ['main.py'],
-    pathex=[],
+    [str(main_script)],
+    pathex=[str(project_root)],
     binaries=[],
     datas=[],
     hiddenimports=['fitz', 'PIL._tkinter_finder'],

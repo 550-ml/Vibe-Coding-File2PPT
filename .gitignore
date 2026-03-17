@@ -11,5 +11,8 @@ htmlcov/
 venv/
 
 dist/
+build/File2PPT/
+build/*.toc
+build/*.pkg
 
 docs/【目录样例】2026年国际会议/样例输出.pptx
