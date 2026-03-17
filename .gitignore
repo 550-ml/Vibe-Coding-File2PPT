@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.so
+.DS_Store
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+.venv/
+venv/
+
+dist/
+
+docs/【目录样例】2026年国际会议/样例输出.pptx
