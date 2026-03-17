@@ -137,7 +137,7 @@ class File2PPTApp:
 
         self.generate_button.configure(state="disabled")
         self.cancel_button.configure(state="disabled")
-        self.status_var.set("校验中，请稍候...")
+        self.status_var.set("扫描目录中，请稍候...")
         thread = threading.Thread(
             target=self._run_generation,
             args=(root_dir, filename),
@@ -148,11 +148,13 @@ class File2PPTApp:
     def _run_generation(self, root_dir: str, filename: str) -> None:
         try:
             project = scan_project(root_dir)
+            file_count = sum(len(topic.items) for section in project.sections for topic in section.topics)
+            section_count = len(project.sections)
+            self._set_status(f"扫描完成，共发现 {section_count} 组内容、{file_count} 个文件。")
             with tempfile.TemporaryDirectory(prefix="file2ppt_") as preview_dir:
-                self._set_status("生成预览图中，请稍候...")
-                project = generate_previews(project, preview_dir)
+                project = generate_previews(project, preview_dir, self._on_preview_progress)
                 output_path = Path(root_dir) / f"{filename}.pptx"
-                self._set_status("生成 PPT 中，请稍候...")
+                self._set_status("写入 PPT 中，请稍候...")
                 result = build_ppt(project, output_path)
             self.root.after(0, lambda: self._on_success(result.output_path, result.slide_count, len(result.skipped_files)))
         except ScanError as exc:
@@ -163,6 +165,9 @@ class File2PPTApp:
 
     def _set_status(self, message: str) -> None:
         self.root.after(0, lambda: self.status_var.set(message))
+
+    def _on_preview_progress(self, current: int, total: int, filename: str) -> None:
+        self._set_status(f"生成预览图中（{current}/{total}）：{filename}")
 
     def _on_success(self, output_path: Path, slide_count: int, skipped_count: int) -> None:
         self.generate_button.configure(state="normal")

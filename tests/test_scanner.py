@@ -8,6 +8,34 @@ from src.scanner import ScanError, scan_project
 
 
 class ScannerTests(unittest.TestCase):
+    def test_scan_project_supports_files_directly_under_selected_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "root"
+            root.mkdir()
+            (root / "one.pdf").write_bytes(b"%PDF-1.4")
+            (root / "two.jpg").write_bytes(b"jpg")
+
+            project = scan_project(root)
+
+            self.assertEqual(len(project.sections), 1)
+            self.assertEqual(project.sections[0].name, "当前文件夹")
+            self.assertEqual(project.sections[0].topics[0].name, "root")
+            self.assertEqual(len(project.sections[0].topics[0].items), 2)
+
+    def test_scan_project_supports_nested_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "root"
+            topic = root / "会议" / "2026" / "NLP"
+            topic.mkdir(parents=True)
+            (topic / "paper.pdf").write_bytes(b"%PDF-1.4")
+
+            project = scan_project(root)
+
+            self.assertEqual(len(project.sections), 1)
+            self.assertEqual(project.sections[0].name, "会议")
+            self.assertEqual(project.sections[0].topics[0].name, "2026 / NLP")
+            self.assertEqual(len(project.sections[0].topics[0].items), 1)
+
     def test_scan_project_collects_supported_files_and_skips_others(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "root"
@@ -32,7 +60,7 @@ class ScannerTests(unittest.TestCase):
             with self.assertRaises(ScanError):
                 scan_project(root)
 
-    def test_scan_project_rejects_topic_without_supported_files(self) -> None:
+    def test_scan_project_rejects_root_without_supported_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "root"
             topic = root / "ACL" / "NLP"

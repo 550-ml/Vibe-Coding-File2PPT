@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from pathlib import Path
 
 from .models import LeafItem, ProjectTree, Section, Topic
@@ -20,48 +21,52 @@ def scan_project(root_dir: str | Path) -> ProjectTree:
     if not root_path.is_dir():
         raise ScanError(f"选择的路径不是目录: {root_path}")
 
-    section_dirs = [path for path in sorted(root_path.iterdir()) if path.is_dir()]
-    if not section_dirs:
-        raise ScanError("总目录下没有一级子目录。")
-
     project = ProjectTree(root_name=root_path.name, root_path=root_path)
+    sections_by_name: OrderedDict[str, Section] = OrderedDict()
 
-    for section_dir in section_dirs:
-        topic_dirs = [path for path in sorted(section_dir.iterdir()) if path.is_dir()]
-        if not topic_dirs:
-            raise ScanError(f"一级子目录为空: {section_dir.name}")
+    candidate_dirs = [root_path]
+    candidate_dirs.extend(path for path in sorted(root_path.rglob("*")) if path.is_dir())
 
-        section = Section(name=section_dir.name)
+    for current_dir in candidate_dirs:
+        files = [path for path in sorted(current_dir.iterdir()) if path.is_file()]
+        if not files:
+            continue
 
-        for topic_dir in topic_dirs:
-            files = [path for path in sorted(topic_dir.iterdir()) if path.is_file()]
-            if not files:
-                raise ScanError(f"二级子目录为空: {section_dir.name}/{topic_dir.name}")
+        supported_items: list[LeafItem] = []
+        for file_path in files:
+            suffix = file_path.suffix.lower()
+            if suffix not in SUPPORTED_EXTENSIONS:
+                project.skipped_files.append(file_path)
+                continue
 
-            topic = Topic(name=topic_dir.name)
-
-            for file_path in files:
-                suffix = file_path.suffix.lower()
-                if suffix not in SUPPORTED_EXTENSIONS:
-                    project.skipped_files.append(file_path)
-                    continue
-
-                kind = "pdf" if suffix in PDF_EXTENSIONS else "image"
-                topic.items.append(
-                    LeafItem(
-                        source_path=file_path,
-                        display_name=file_path.stem,
-                        kind=kind,
-                    )
+            kind = "pdf" if suffix in PDF_EXTENSIONS else "image"
+            supported_items.append(
+                LeafItem(
+                    source_path=file_path,
+                    display_name=file_path.stem,
+                    kind=kind,
                 )
+            )
 
-            if not topic.items:
-                raise ScanError(
-                    f"二级子目录中没有可用文件: {section_dir.name}/{topic_dir.name}"
-                )
+        if not supported_items:
+            continue
 
-            section.topics.append(topic)
+        section_name, topic_name = _resolve_section_and_topic_names(root_path, current_dir)
+        section = sections_by_name.setdefault(section_name, Section(name=section_name))
+        section.topics.append(Topic(name=topic_name, items=supported_items))
 
-        project.sections.append(section)
+    project.sections = list(sections_by_name.values())
+    if not project.sections:
+        raise ScanError("所选目录及其子目录中没有可用的图片或 PDF 文件。")
 
     return project
+
+
+def _resolve_section_and_topic_names(root_path: Path, current_dir: Path) -> tuple[str, str]:
+    relative_parts = current_dir.relative_to(root_path).parts
+
+    if not relative_parts:
+        return "当前文件夹", root_path.name
+    if len(relative_parts) == 1:
+        return relative_parts[0], "文件列表"
+    return relative_parts[0], " / ".join(relative_parts[1:])

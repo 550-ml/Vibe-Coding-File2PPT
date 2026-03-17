@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import fitz
@@ -10,13 +11,22 @@ from .models import ProjectTree
 THUMBNAIL_SIZE = (900, 600)
 
 
-def generate_previews(project: ProjectTree, preview_dir: str | Path) -> ProjectTree:
+def generate_previews(
+    project: ProjectTree,
+    preview_dir: str | Path,
+    progress_callback: Callable[[int, int, str], None] | None = None,
+) -> ProjectTree:
     preview_root = Path(preview_dir).expanduser().resolve()
     preview_root.mkdir(parents=True, exist_ok=True)
+    total_items = sum(len(topic.items) for section in project.sections for topic in section.topics)
+    processed = 0
 
     for section in project.sections:
         for topic in section.topics:
             for item in topic.items:
+                processed += 1
+                if progress_callback is not None:
+                    progress_callback(processed, total_items, item.source_path.name)
                 safe_name = (
                     _safe_filename(f"{section.name}_{topic.name}_{item.source_path.stem}_{item.kind}")
                     + ".png"
