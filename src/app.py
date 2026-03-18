@@ -22,6 +22,9 @@ class File2PPTApp:
         self.folder_var = StringVar()
         self.filename_var = StringVar()
         self.status_var = StringVar(value="请选择目录并输入 PPT 文件名。")
+        self.is_processing = False
+        self._heartbeat_step = 0
+        self._heartbeat_base = ""
 
         self._build_layout()
 
@@ -137,7 +140,7 @@ class File2PPTApp:
 
         self.generate_button.configure(state="disabled")
         self.cancel_button.configure(state="disabled")
-        self.status_var.set("扫描目录中，请稍候...")
+        self._begin_processing("扫描目录中")
         thread = threading.Thread(
             target=self._run_generation,
             args=(root_dir, filename),
@@ -147,15 +150,16 @@ class File2PPTApp:
 
     def _run_generation(self, root_dir: str, filename: str) -> None:
         try:
-            project = scan_project(root_dir)
+            project = scan_project(root_dir, self._on_scan_progress)
             file_count = sum(len(topic.items) for section in project.sections for topic in section.topics)
             section_count = len(project.sections)
             self._set_status(f"扫描完成，共发现 {section_count} 组内容、{file_count} 个文件。")
             with tempfile.TemporaryDirectory(prefix="file2ppt_") as preview_dir:
+                self._begin_processing("生成预览图中")
                 project = generate_previews(project, preview_dir, self._on_preview_progress)
                 output_path = Path(root_dir) / f"{filename}.pptx"
-                self._set_status("写入 PPT 中，请稍候...")
-                result = build_ppt(project, output_path)
+                self._begin_processing("写入 PPT 中")
+                result = build_ppt(project, output_path, self._on_build_progress)
             self.root.after(0, lambda: self._on_success(result.output_path, result.slide_count, len(result.skipped_files)))
         except ScanError as exc:
             self.root.after(0, lambda: self._on_error(str(exc)))
@@ -166,10 +170,36 @@ class File2PPTApp:
     def _set_status(self, message: str) -> None:
         self.root.after(0, lambda: self.status_var.set(message))
 
+    def _begin_processing(self, base_message: str) -> None:
+        self._heartbeat_base = base_message
+        self._heartbeat_step = 0
+        if not self.is_processing:
+            self.is_processing = True
+            self.root.after(0, self._heartbeat)
+        self._set_status(f"{base_message}...")
+
+    def _heartbeat(self) -> None:
+        if not self.is_processing:
+            return
+        dots = "." * ((self._heartbeat_step % 3) + 1)
+        self.status_var.set(f"{self._heartbeat_base}{dots}")
+        self._heartbeat_step += 1
+        self.root.after(500, self._heartbeat)
+
+    def _on_scan_progress(self, current: int, current_dir: str) -> None:
+        self._heartbeat_base = f"扫描目录中，已检查 {current} 个文件夹"
+        self._set_status(f"{self._heartbeat_base}：{current_dir}")
+
     def _on_preview_progress(self, current: int, total: int, filename: str) -> None:
+        self._heartbeat_base = f"生成预览图中（{current}/{total}）"
         self._set_status(f"生成预览图中（{current}/{total}）：{filename}")
 
+    def _on_build_progress(self, current: int, total: int, title: str) -> None:
+        self._heartbeat_base = f"写入 PPT 中（{current}/{total} 页）"
+        self._set_status(f"写入 PPT 中（{current}/{total} 页）：{title}")
+
     def _on_success(self, output_path: Path, slide_count: int, skipped_count: int) -> None:
+        self.is_processing = False
         self.generate_button.configure(state="normal")
         self.cancel_button.configure(state="normal")
         message = f"生成成功，共 {slide_count} 页。输出: {output_path}"
@@ -179,6 +209,7 @@ class File2PPTApp:
         messagebox.showinfo("生成成功", message)
 
     def _on_error(self, message: str) -> None:
+        self.is_processing = False
         self.generate_button.configure(state="normal")
         self.cancel_button.configure(state="normal")
         self.status_var.set(message)

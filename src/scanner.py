@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 from collections import OrderedDict
+from collections.abc import Callable
 from pathlib import Path
 
 from .models import LeafItem, ProjectTree, Section, Topic
@@ -14,7 +16,10 @@ class ScanError(ValueError):
     pass
 
 
-def scan_project(root_dir: str | Path) -> ProjectTree:
+def scan_project(
+    root_dir: str | Path,
+    progress_callback: Callable[[int, str], None] | None = None,
+) -> ProjectTree:
     root_path = Path(root_dir).expanduser().resolve()
     if not root_path.exists():
         raise ScanError(f"目录不存在: {root_path}")
@@ -23,12 +28,21 @@ def scan_project(root_dir: str | Path) -> ProjectTree:
 
     project = ProjectTree(root_name=root_path.name, root_path=root_path)
     sections_by_name: OrderedDict[str, Section] = OrderedDict()
+    scanned_dirs = 0
 
-    candidate_dirs = [root_path]
-    candidate_dirs.extend(path for path in sorted(root_path.rglob("*")) if path.is_dir())
+    def _on_walk_error(error: OSError) -> None:
+        if error.filename:
+            project.skipped_files.append(Path(error.filename))
 
-    for current_dir in candidate_dirs:
-        files = [path for path in sorted(current_dir.iterdir()) if path.is_file()]
+    for current_root, dirnames, filenames in os.walk(root_path, topdown=True, onerror=_on_walk_error):
+        dirnames.sort()
+        filenames.sort()
+        current_dir = Path(current_root)
+        scanned_dirs += 1
+        if progress_callback is not None and (scanned_dirs == 1 or scanned_dirs % 20 == 0):
+            progress_callback(scanned_dirs, str(current_dir))
+
+        files = [current_dir / name for name in filenames]
         if not files:
             continue
 

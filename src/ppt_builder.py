@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from pathlib import Path
 
 from pptx import Presentation
@@ -15,7 +16,11 @@ SLIDE_WIDTH = Inches(13.333)
 SLIDE_HEIGHT = Inches(7.5)
 
 
-def build_ppt(project_tree: ProjectTree, output_path: str | Path) -> BuildResult:
+def build_ppt(
+    project_tree: ProjectTree,
+    output_path: str | Path,
+    progress_callback: Callable[[int, int, str], None] | None = None,
+) -> BuildResult:
     output = Path(output_path).expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -23,12 +28,24 @@ def build_ppt(project_tree: ProjectTree, output_path: str | Path) -> BuildResult
     presentation.slide_width = SLIDE_WIDTH
     presentation.slide_height = SLIDE_HEIGHT
 
+    tree_pages = _paginate_tree_lines(_build_directory_tree_lines(project_tree))
+    total_slides = _estimate_total_slides(project_tree, len(tree_pages))
+    built_slides = 0
+
     _add_cover_slide(presentation, project_tree.root_name)
-    _add_outline_slide(presentation, [section.name for section in project_tree.sections])
+    built_slides += 1
+    if progress_callback is not None:
+        progress_callback(built_slides, total_slides, project_tree.root_name)
+    built_slides += _add_directory_tree_slides(presentation, tree_pages)
+    if progress_callback is not None:
+        progress_callback(built_slides, total_slides, "目录结构")
 
     for section in project_tree.sections:
         for topic in section.topics:
-            _add_topic_slides(presentation, section.name, topic)
+            added = _add_topic_slides(presentation, section.name, topic)
+            built_slides += added
+            if progress_callback is not None:
+                progress_callback(built_slides, total_slides, f"{section.name} -- {topic.name}")
 
     presentation.save(output)
     return BuildResult(
@@ -36,6 +53,14 @@ def build_ppt(project_tree: ProjectTree, output_path: str | Path) -> BuildResult
         slide_count=len(presentation.slides),
         skipped_files=project_tree.skipped_files,
     )
+
+
+def _estimate_total_slides(project_tree: ProjectTree, tree_slide_count: int) -> int:
+    total = 1 + tree_slide_count
+    for section in project_tree.sections:
+        for topic in section.topics:
+            total += math.ceil(len(topic.items) / _items_per_slide(len(topic.items)))
+    return total
 
 
 def _add_cover_slide(presentation: Presentation, root_name: str) -> None:
@@ -68,44 +93,66 @@ def _add_cover_slide(presentation: Presentation, root_name: str) -> None:
     sub_run.font.color.rgb = RGBColor(104, 117, 130)
 
 
-def _add_outline_slide(presentation: Presentation, section_names: list[str]) -> None:
-    slide = presentation.slides.add_slide(presentation.slide_layouts[6])
-    _add_page_title(slide, "目录")
+def _add_directory_tree_slides(presentation: Presentation, tree_pages: list[list[str]]) -> int:
+    for index, lines in enumerate(tree_pages, start=1):
+        slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+        title = "目录结构"
+        if len(tree_pages) > 1:
+            title = f"{title} ({index}/{len(tree_pages)})"
+        _add_page_title(slide, title)
 
-    cols = 1 if len(section_names) <= 6 else 2
-    rows = math.ceil(len(section_names) / cols)
-    left_base = 1.2
-    top_base = 1.7
-    col_width = 5.4
-    row_height = 0.7
-
-    for index, name in enumerate(section_names):
-        col = index // rows
-        row = index % rows
-        left = Inches(left_base + col * col_width)
-        top = Inches(top_base + row * row_height)
-        shape = slide.shapes.add_shape(
-            MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE,
-            left,
-            top,
-            Inches(4.7),
-            Inches(0.48),
-        )
-        shape.fill.solid()
-        shape.fill.fore_color.rgb = RGBColor(232, 239, 246)
-        shape.line.color.rgb = RGBColor(208, 220, 233)
-        frame = shape.text_frame
+        box = slide.shapes.add_textbox(Inches(0.7), Inches(1.25), Inches(12.0), Inches(5.9))
+        frame = box.text_frame
+        frame.word_wrap = False
+        frame.clear()
         paragraph = frame.paragraphs[0]
         paragraph.alignment = PP_ALIGN.LEFT
         run = paragraph.add_run()
-        run.text = name
-        run.font.name = "Microsoft YaHei"
-        run.font.size = Pt(16)
-        run.font.bold = True
-        run.font.color.rgb = RGBColor(34, 57, 83)
+        run.text = "\n".join(lines)
+        run.font.name = "Consolas"
+        run.font.size = Pt(12)
+        run.font.color.rgb = RGBColor(52, 60, 69)
+    return len(tree_pages)
 
 
-def _add_topic_slides(presentation: Presentation, section_name: str, topic: Topic) -> None:
+def _build_directory_tree_lines(project_tree: ProjectTree) -> list[str]:
+    tree: dict[str, dict] = {}
+    for section in project_tree.sections:
+        for topic in section.topics:
+            for item in topic.items:
+                parts = item.source_path.relative_to(project_tree.root_path).parts
+                node = tree
+                for part in parts[:-1]:
+                    node = node.setdefault(part, {})
+                node[item.display_name] = None
+
+    lines = [f"{project_tree.root_name}/"]
+    lines.extend(_render_tree_nodes(tree, prefix=""))
+    return lines
+
+
+def _render_tree_nodes(tree: dict[str, dict | None], prefix: str) -> list[str]:
+    lines: list[str] = []
+    items = list(tree.items())
+    for index, (name, child) in enumerate(items):
+        is_last = index == len(items) - 1
+        branch = "└── " if is_last else "├── "
+        suffix = "/" if isinstance(child, dict) else ""
+        lines.append(f"{prefix}{branch}{name}{suffix}")
+        if isinstance(child, dict):
+            child_prefix = f"{prefix}{'    ' if is_last else '│   '}"
+            lines.extend(_render_tree_nodes(child, child_prefix))
+    return lines
+
+
+def _paginate_tree_lines(lines: list[str], max_lines_per_slide: int = 24) -> list[list[str]]:
+    return [
+        lines[index : index + max_lines_per_slide]
+        for index in range(0, len(lines), max_lines_per_slide)
+    ]
+
+
+def _add_topic_slides(presentation: Presentation, section_name: str, topic: Topic) -> int:
     items = topic.items
     per_slide = _items_per_slide(len(items))
     total_pages = math.ceil(len(items) / per_slide)
@@ -117,6 +164,7 @@ def _add_topic_slides(presentation: Presentation, section_name: str, topic: Topi
             title = f"{title} ({page_index + 1}/{total_pages})"
         _add_page_title(slide, title)
         _add_items_grid(slide, chunk)
+    return total_pages
 
 
 def _items_per_slide(item_count: int) -> int:
