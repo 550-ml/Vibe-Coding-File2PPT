@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-CONTROL_CODE = b"Test "
+CONTROL_CODE = b"Test"
 CONTROL_DIR_NAME = "control"
 DLL_NAME = "DRMSRelClient4Python-x64.dll"
 REL_FILE_NAME = "WH-OFDMaker-Rel.xml"

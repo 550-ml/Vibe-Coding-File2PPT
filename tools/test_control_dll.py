@@ -5,7 +5,7 @@ import platform
 from pathlib import Path
 
 
-CONTROL_CODE = b"Test "
+CONTROL_CODE = b"Test"
 CONTROL_DIR = Path(__file__).resolve().parent.parent / "contrl" / "软件控制所需文件"
 DLL_PATH = CONTROL_DIR / "DRMSRelClient4Python-x64.dll"
 REL_PATH = CONTROL_DIR / "WH-OFDMaker-Rel.xml"
