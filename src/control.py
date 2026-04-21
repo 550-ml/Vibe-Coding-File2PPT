@@ -3,15 +3,17 @@ from __future__ import annotations
 import ctypes
 import os
 import platform
+import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 
-CONTROL_CODE = b"Test"
+DEFAULT_CONTROL_CODE = "Test"
 CONTROL_DIR_NAME = "control"
 DLL_NAME = "DRMSRelClient4Python-x64.dll"
-REL_FILE_NAME = "WH-OFDMaker-Rel.xml"
+DEFAULT_REL_FILE_NAME = "WH-OFDMaker-Rel.xml"
+USER_REL_FILE_NAME = "User-Rel.xml"
 
 
 @dataclass
@@ -20,23 +22,27 @@ class ControlCheckResult:
     message: str = ""
 
 
-def check_software_control() -> ControlCheckResult:
+def check_software_control(control_code: str, rel_path: str | Path | None = None) -> ControlCheckResult:
     if platform.system().lower() != "windows":
         return ControlCheckResult(True, "非 Windows 环境，跳过授权 DLL 校验。")
 
     if os.environ.get("FILE2PPT_SKIP_LICENSE") == "1":
         return ControlCheckResult(True, "已通过环境变量跳过授权校验。")
 
+    code = control_code.strip()
+    if not code:
+        return ControlCheckResult(False, "请输入控制码。")
+
     control_dir = _find_control_dir()
     if control_dir is None:
         return ControlCheckResult(False, "未找到授权控制文件目录 control。")
 
     dll_path = control_dir / DLL_NAME
-    rel_path = control_dir / REL_FILE_NAME
+    rel_file_path = Path(rel_path).expanduser().resolve() if rel_path else _find_rel_file(control_dir)
     if not dll_path.exists():
         return ControlCheckResult(False, f"未找到授权 DLL：{dll_path}")
-    if not rel_path.exists():
-        return ControlCheckResult(False, f"未找到授权文件：{rel_path}")
+    if rel_file_path is None or not rel_file_path.exists():
+        return ControlCheckResult(False, "请选择授权控制文件 XML。")
 
     try:
         if hasattr(os, "add_dll_directory"):
@@ -49,12 +55,12 @@ def check_software_control() -> ControlCheckResult:
         lib.RelChecker_Destroy.argtypes = [ctypes.c_void_p]
         lib.RelChecker_Destroy.restype = None
 
-        obj = lib.RelChecker_Create(str(rel_path).encode("utf-8"))
+        obj = lib.RelChecker_Create(str(rel_file_path).encode("utf-8"))
         if not obj:
             return ControlCheckResult(False, "授权控制对象创建失败。")
 
         try:
-            ok = bool(lib.RelChecker_Check(obj, CONTROL_CODE))
+            ok = bool(lib.RelChecker_Check(obj, code.encode("utf-8")))
         finally:
             lib.RelChecker_Destroy(obj)
 
@@ -65,6 +71,29 @@ def check_software_control() -> ControlCheckResult:
         return ControlCheckResult(False, f"DLL 加载失败：{exc}")
     except Exception as exc:
         return ControlCheckResult(False, f"授权校验失败：{exc}")
+
+
+def get_default_rel_file() -> Path | None:
+    control_dir = _find_control_dir()
+    if control_dir is None:
+        return None
+    return _find_rel_file(control_dir)
+
+
+def install_rel_file(source_path: str | Path) -> Path:
+    source = Path(source_path).expanduser().resolve()
+    if not source.exists():
+        raise FileNotFoundError(f"授权文件不存在：{source}")
+
+    control_dir = _find_control_dir()
+    if control_dir is None:
+        executable_dir = Path(sys.executable).resolve().parent
+        control_dir = executable_dir / CONTROL_DIR_NAME
+        control_dir.mkdir(parents=True, exist_ok=True)
+
+    target = control_dir / USER_REL_FILE_NAME
+    shutil.copy2(source, target)
+    return target
 
 
 def _find_control_dir() -> Path | None:
@@ -83,4 +112,16 @@ def _find_control_dir() -> Path | None:
     for candidate in candidates:
         if candidate.exists():
             return candidate
+    return None
+
+
+def _find_rel_file(control_dir: Path) -> Path | None:
+    user_rel = control_dir / USER_REL_FILE_NAME
+    if user_rel.exists():
+        return user_rel
+
+    default_rel = control_dir / DEFAULT_REL_FILE_NAME
+    if default_rel.exists():
+        return default_rel
+
     return None

@@ -8,7 +8,7 @@ from pathlib import Path
 from tkinter import Button, Entry, Frame, Label, LabelFrame, StringVar, Tk, filedialog, messagebox
 from tkinter.scrolledtext import ScrolledText
 
-from .control import check_software_control
+from .control import DEFAULT_CONTROL_CODE, check_software_control, get_default_rel_file, install_rel_file
 from .ppt_builder import build_ppt
 from .preview import generate_previews
 from .scanner import ScanError, scan_project
@@ -18,13 +18,15 @@ class File2PPTApp:
     def __init__(self, root: Tk) -> None:
         self.root = root
         self.root.title("File2PPT")
-        self.root.geometry("980x620")
-        self.root.minsize(900, 520)
+        self.root.geometry("1040x720")
+        self.root.minsize(940, 620)
         self.root.resizable(True, True)
         self.root.configure(bg="#f3f3f3")
 
         self.folder_var = StringVar()
         self.filename_var = StringVar()
+        self.rel_file_var = StringVar(value=str(get_default_rel_file() or ""))
+        self.control_code_var = StringVar(value=DEFAULT_CONTROL_CODE)
         self.status_var = StringVar(value="请选择目录并输入 PPT 文件名。")
         self.output_hint_var = StringVar(value="输出位置：将保存到所选目录的上一级目录。")
         self.is_processing = False
@@ -95,8 +97,49 @@ class File2PPTApp:
         )
         browse_button.grid(row=1, column=2, padx=(22, 0), pady=(10, 22), ipady=8)
 
+        Label(
+            panel,
+            text="授权文件：",
+            font=("Microsoft YaHei", 14),
+            bg="#f3f3f3",
+        ).grid(row=2, column=0, sticky="w", pady=(4, 14))
+        self.rel_file_entry = Entry(
+            panel,
+            textvariable=self.rel_file_var,
+            width=48,
+            font=("Microsoft YaHei", 11),
+            relief="solid",
+            bd=1,
+        )
+        self.rel_file_entry.grid(row=2, column=1, sticky="ew", pady=(4, 14), ipady=8)
+
+        rel_button = Button(
+            panel,
+            text="上传",
+            command=self.select_rel_file,
+            width=8,
+            font=("Microsoft YaHei", 12),
+        )
+        rel_button.grid(row=2, column=2, padx=(22, 0), pady=(4, 14), ipady=6)
+
+        Label(
+            panel,
+            text="控制码：",
+            font=("Microsoft YaHei", 14),
+            bg="#f3f3f3",
+        ).grid(row=3, column=0, sticky="w", pady=(4, 14))
+        self.control_code_entry = Entry(
+            panel,
+            textvariable=self.control_code_var,
+            width=48,
+            font=("Microsoft YaHei", 13),
+            relief="solid",
+            bd=1,
+        )
+        self.control_code_entry.grid(row=3, column=1, columnspan=2, sticky="ew", pady=(4, 14), ipady=8)
+
         buttons = Frame(panel, bg="#f3f3f3")
-        buttons.grid(row=2, column=0, columnspan=3, pady=(6, 16))
+        buttons.grid(row=4, column=0, columnspan=3, pady=(6, 16))
         self.generate_button = Button(
             buttons,
             text="确定",
@@ -124,7 +167,7 @@ class File2PPTApp:
             bg="#f3f3f3",
             font=("Microsoft YaHei", 10),
         )
-        output_hint_label.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(4, 8))
+        output_hint_label.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(4, 8))
 
         status_label = Label(
             panel,
@@ -136,7 +179,7 @@ class File2PPTApp:
             bg="#f3f3f3",
             font=("Microsoft YaHei", 10, "bold"),
         )
-        status_label.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(0, 8))
+        status_label.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(0, 8))
 
         log_label = Label(
             panel,
@@ -145,7 +188,7 @@ class File2PPTApp:
             bg="#f3f3f3",
             anchor="w",
         )
-        log_label.grid(row=5, column=0, columnspan=3, sticky="w", pady=(6, 6))
+        log_label.grid(row=7, column=0, columnspan=3, sticky="w", pady=(6, 6))
 
         self.log_text = ScrolledText(
             panel,
@@ -155,11 +198,11 @@ class File2PPTApp:
             relief="solid",
             bd=1,
         )
-        self.log_text.grid(row=6, column=0, columnspan=3, sticky="nsew")
+        self.log_text.grid(row=8, column=0, columnspan=3, sticky="nsew")
         self.log_text.configure(state="disabled")
 
         panel.columnconfigure(1, weight=1)
-        panel.rowconfigure(6, weight=1)
+        panel.rowconfigure(8, weight=1)
 
     def select_folder(self) -> None:
         selected = filedialog.askdirectory(title="选择总目录")
@@ -171,12 +214,40 @@ class File2PPTApp:
             self.output_hint_var.set(f"输出位置：{output_path}")
             self._append_log(f"已选择目录：{selected}")
 
+    def select_rel_file(self) -> None:
+        selected = filedialog.askopenfilename(
+            title="选择授权控制文件",
+            filetypes=[("XML 授权文件", "*.xml"), ("所有文件", "*.*")],
+        )
+        if not selected:
+            return
+
+        try:
+            installed_path = install_rel_file(selected)
+        except Exception as exc:
+            messagebox.showerror("授权文件上传失败", str(exc))
+            self._append_log(f"授权文件上传失败：{exc}")
+            return
+
+        self.rel_file_var.set(str(installed_path))
+        self._append_log(f"已上传授权文件：{installed_path}")
+
     def start_generation(self) -> None:
         root_dir = self.folder_var.get().strip()
         filename = self.filename_var.get().strip() or Path(root_dir).name
         if not root_dir:
             messagebox.showerror("缺少目录", "请先选择文件夹目录。")
             return
+
+        control_result = check_software_control(
+            self.control_code_var.get(),
+            self.rel_file_var.get().strip() or None,
+        )
+        if not control_result.ok:
+            messagebox.showerror("授权校验失败", control_result.message)
+            self._append_log(f"授权校验失败：{control_result.message}")
+            return
+        self._append_log(control_result.message)
 
         self.filename_var.set(filename)
         output_path = self._resolve_output_path(root_dir, filename)
@@ -283,13 +354,6 @@ class File2PPTApp:
 
 def main() -> None:
     root = Tk()
-    root.withdraw()
-    control_result = check_software_control()
-    if not control_result.ok:
-        messagebox.showerror("授权校验失败", control_result.message)
-        root.destroy()
-        return
-    root.deiconify()
     app = File2PPTApp(root)
     app.filename_entry.focus_set()
     root.mainloop()

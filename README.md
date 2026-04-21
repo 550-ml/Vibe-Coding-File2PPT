@@ -1,6 +1,6 @@
 # File2PPT
 
-把固定目录结构下的图片和 PDF 自动整理成一个 PowerPoint 文件，并提供 Windows 桌面端入口与单文件 `exe` 打包方案。界面按“PPT 文件名 / 文件夹目录 / 浏览 / 确定 / 取消”的最简窗体实现。
+把固定目录结构下的图片和 PDF 自动整理成一个 PowerPoint 文件，并提供 Windows 桌面端入口与 `exe` 打包方案。界面按“PPT 文件名 / 文件夹目录 / 授权文件 / 控制码 / 确定 / 取消”的最简窗体实现。
 
 ## 功能范围
 
@@ -50,6 +50,15 @@ build\build_windows.bat
 输出文件位于 `dist\File2PPT\`。
 新版构建采用目录分发，脚本会同时压缩生成 `dist\File2PPT.zip`。发给用户时发送这个 zip；用户解压后运行 `File2PPT\File2PPT.exe`。
 授权控制所需的 `DRMSRelClient4Python-x64.dll`、`WH-OFDMaker-Rel.xml` 和 `GetDeviceInfo_PC.exe` 会被打包到分发目录的 `control` 子目录中。
+
+## 授权控制
+
+程序启动时不会先卡在授权校验，而是先打开界面。界面里有两个授权输入项：
+
+- `授权文件`：默认读取打包内置的 `WH-OFDMaker-Rel.xml`；如果需要更新授权，点击“上传”选择新的 XML，程序会复制为 `control\User-Rel.xml` 并优先使用。
+- `控制码`：默认值为 `Test`；生成 PPT 前会用当前控制码和当前授权文件调用 DLL 校验。
+
+如果授权文件或控制码不正确，点击“确定”时会直接提示错误，不会继续生成 PPT。
 
 ## 自动产出 EXE
 
