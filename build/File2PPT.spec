@@ -4,13 +4,18 @@ from pathlib import Path
 
 project_root = Path(SPECPATH).resolve().parent
 main_script = project_root / 'main.py'
+control_source = project_root / 'contrl' / '软件控制所需文件'
 
 
 a = Analysis(
     [str(main_script)],
     pathex=[str(project_root)],
     binaries=[],
-    datas=[],
+    datas=[
+        (str(control_source / 'DRMSRelClient4Python-x64.dll'), 'control'),
+        (str(control_source / 'WH-OFDMaker-Rel.xml'), 'control'),
+        (str(control_source / 'GetDeviceInfo_PC.exe'), 'control'),
+    ],
     hiddenimports=['fitz', 'PIL._tkinter_finder'],
     hookspath=[],
     hooksconfig={},

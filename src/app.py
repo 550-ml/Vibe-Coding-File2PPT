@@ -8,6 +8,7 @@ from pathlib import Path
 from tkinter import Button, Entry, Frame, Label, LabelFrame, StringVar, Tk, filedialog, messagebox
 from tkinter.scrolledtext import ScrolledText
 
+from .control import check_software_control
 from .ppt_builder import build_ppt
 from .preview import generate_previews
 from .scanner import ScanError, scan_project
@@ -282,6 +283,13 @@ class File2PPTApp:
 
 def main() -> None:
     root = Tk()
+    root.withdraw()
+    control_result = check_software_control()
+    if not control_result.ok:
+        messagebox.showerror("授权校验失败", control_result.message)
+        root.destroy()
+        return
+    root.deiconify()
     app = File2PPTApp(root)
     app.filename_entry.focus_set()
     root.mainloop()

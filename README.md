@@ -47,7 +47,9 @@ Windows 上安装 Python 后执行：
 build\build_windows.bat
 ```
 
-输出文件默认位于 `dist\File2PPT.exe`。
+输出文件位于 `dist\File2PPT\`。
+新版构建采用目录分发，脚本会同时压缩生成 `dist\File2PPT.zip`。发给用户时发送这个 zip；用户解压后运行 `File2PPT\File2PPT.exe`。
+授权控制所需的 `DRMSRelClient4Python-x64.dll`、`WH-OFDMaker-Rel.xml` 和 `GetDeviceInfo_PC.exe` 会被打包到分发目录的 `control` 子目录中。
 
 ## 自动产出 EXE
 
@@ -55,14 +57,15 @@ build\build_windows.bat
 
 - 推送到 `main` 或 `master` 会自动在 Windows 环境构建
 - 也可以在 GitHub 的 `Actions` 页面手动触发
-- 构建完成后，在 workflow 的 artifact 中下载 `File2PPT-windows-exe`
+- 构建完成后，在 workflow 的 artifact 中下载 `File2PPT-windows-build`
 
-如果你当前开发机不是 Windows，推荐直接用这个工作流拿到真正的 `File2PPT.exe`
+如果你当前开发机不是 Windows，推荐直接用这个工作流拿到真正的 Windows 分发包。
 
 ## 项目结构
 
 - `main.py`：程序入口
 - `src/app.py`：Tkinter 界面
+- `src/control.py`：Windows 授权控制校验
 - `src/scanner.py`：目录扫描与校验
 - `src/preview.py`：图片和 PDF 预览图生成
 - `src/ppt_builder.py`：PPT 构建
