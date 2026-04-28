@@ -22,7 +22,10 @@ class ControlCheckResult:
     message: str = ""
 
 
-def check_software_control(control_code: str, rel_path: str | Path | None = None) -> ControlCheckResult:
+def check_software_control(
+    control_code: str = DEFAULT_CONTROL_CODE,
+    rel_path: str | Path | None = None,
+) -> ControlCheckResult:
     if platform.system().lower() != "windows":
         return ControlCheckResult(True, "非 Windows 环境，跳过授权 DLL 校验。")
 
@@ -31,7 +34,7 @@ def check_software_control(control_code: str, rel_path: str | Path | None = None
 
     code = control_code.strip()
     if not code:
-        return ControlCheckResult(False, "请输入控制码。")
+        return ControlCheckResult(False, "授权控制码为空，请联系管理员。")
 
     control_dir = _find_control_dir()
     if control_dir is None:
@@ -42,7 +45,7 @@ def check_software_control(control_code: str, rel_path: str | Path | None = None
     if not dll_path.exists():
         return ControlCheckResult(False, f"未找到授权 DLL：{dll_path}")
     if rel_file_path is None or not rel_file_path.exists():
-        return ControlCheckResult(False, "请选择授权控制文件 XML。")
+        return ControlCheckResult(False, "未找到授权控制文件 XML，请联系管理员。")
 
     try:
         if hasattr(os, "add_dll_directory"):
